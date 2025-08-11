@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Tea & Hearts — for 愛</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: radial-gradient(1200px 800px at 70% -10%, #ffd1dc 0%, #ffe6ee 30%, #fff6f9 60%, #ffffff 100%);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", Meiryo, sans-serif;
+    color: #333;
+  }
+  .wrap {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    height: 100%;
+  }
+  header {
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  header h1 {
+    font-size: 18px;
+    margin: 0;
+    letter-spacing: .04em;
+    font-weight: 700;
+  }
+  header .sub {
+    font-size: 12px;
+    opacity: .8;
+  }
+  .hud {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .pill {
+    background: rgba(255,255,255,.7);
+    border: 1px solid rgba(0,0,0,.06);
+    box-shadow: 0 4px 10px rgba(0,0,0,.08);
+    border-radius: 999px;
+    padding: 6px 12px;
+    backdrop-filter: blur(6px);
+  }
+  #gameCanvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+  }
+  .controls {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+    padding: 10px 12px 14px;
+  }
+  .btn {
+    border: none;
+    border-radius: 12px;
+    padding: 14px 12px;
+    font-size: 16px;
+    font-weight: 600;
+    background: linear-gradient(#ffffff, #f4f4f7);
+    box-shadow: 0 6px 14px rgba(0,0,0,.08);
+    border: 1px solid rgba(0,0,0,.06);
+    letter-spacing: .04em;
+  }
+  .btn:active {
+    transform: translateY(1px);
+    box-shadow: 0 3px 10px rgba(0,0,0,.08);
+  }
+  .btn.primary {
+    background: linear-gradient(#ffe3ec, #ffd4e2);
+  }
+  .hint {
+    font-size: 12px;
+    text-align: center;
+    opacity: .7;
+    padding-bottom: 8px;
+  }
+  .modal {
+    position: absolute;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,.8);
+    backdrop-filter: blur(6px);
+  }
+  .card {
+    width: min(92vw, 520px);
+    border-radius: 16px;
+    background: #fff;
+    border: 1px solid rgba(0,0,0,.08);
+    box-shadow: 0 18px 40px rgba(0,0,0,.12);
+    padding: 20px;
+    text-align: center;
+  }
+  .card h2 {
+    margin-top: 0;
+    margin-bottom: 8px;
+  }
+  .card p {
+    margin: 8px 0;
+    line-height: 1.6;
+  }
+  .scoreline{
+    display:flex;
+    gap:8px;
+    justify-content:center;
+    flex-wrap:wrap;
+  }
+  .tag{
+    background:#fff4f8;
+    border:1px solid #ffd3e3;
+    border-radius: 999px;
+    padding:4px 10px;
+    font-size: 13px;
+  }
+  @media (min-width: 720px) {
+    header h1 { font-size: 20px; }
+    .btn { font-size: 17px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>Tea & Hearts</h1>
+      <div class="sub">Arthur → 愛　—　落ちるハートを受け止めろ</div>
+    </div>
+    <div class="hud">
+      <div class="pill">⏱ <span id="time">60</span>s</div>
+      <div class="pill">⭐️ <span id="score">0</span></div>
+      <div class="pill">💖 Combo <span id="combo">0</span></div>
+      <div class="pill">🫖 <span id="lives">3</span></div>
+    </div>
+  </header>
+
+  <canvas id="gameCanvas"></canvas>
+
+  <div class="hint">PC: ← → で移動・Pで一時停止 / スマホ: カップを指でスライド</div>
+
+  <div class="controls">
+    <button id="btn-left"  class="btn">←</button>
+    <button id="btn-pause" class="btn">⏸ / ▶</button>
+    <button id="btn-right" class="btn">→</button>
+  </div>
+</div>
+
+<div id="modal" class="modal" role="dialog" aria-modal="true">
+  <div class="card">
+    <h2 id="modalTitle">Tea Break</h2>
+    <p id="modalText">準備はいいか？</p>
+    <div class="scoreline">
+      <span class="tag">ハイスコア: <span id="bestScore">0</span></span>
+      <span class="tag">コンボ最大: <span id="bestCombo">0</span></span>
+    </div>
+    <p style="margin-top:12px;">
+      <button id="btn-start" class="btn primary">はじめる</button>
+      <button id="btn-restart" class="btn">もう一度</button>
+    </p>
+  </div>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('gameCanvas');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  const dpr = Math.max(1, window.devicePixelRatio || 1);
+
+  const hud = {
+    time: document.getElementById('time'),
+    score: document.getElementById('score'),
+    combo: document.getElementById('combo'),
+    lives: document.getElementById('lives'),
+  };
+
+  // Modal elements
+  const modal = document.getElementById('modal');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalText = document.getElementById('modalText');
+  const bestScoreEl = document.getElementById('bestScore');
+  const bestComboEl = document.getElementById('bestCombo');
+  const btnStart = document.getElementById('btn-start');
+  const btnRestart = document.getElementById('btn-restart');
+
+  // Controls
+  const btnLeft = document.getElementById('btn-left');
+  const btnRight = document.getElementById('btn-right');
+  const btnPause = document.getElementById('btn-pause');
+
+  // Game state
+  let W = 0, H = 0;
+  let playing = false;
+  let paused = false;
+  let lastTime = 0;
+  let elapsed = 0;
+  let timeLeft = 60;
+  let score = 0;
+  let combo = 0;
+  let lives = 3;
+  let best = JSON.parse(localStorage.getItem('teaHeartsBest') || '{"score":0,"combo":0}');
+  bestScoreEl.textContent = best.score;
+  bestComboEl.textContent = best.combo;
+
+  // Entities
+  const hearts = [];
+  const particles = [];
+  const cup = {
+    x: 0, y: 0, w: 80, h: 40, vx: 0,
+    draw() {
+      // teacup
+      ctx.save();
+      ctx.translate(this.x, this.y);
+      // saucer
+      ctx.fillStyle = '#f4f4f7';
+      ctx.beginPath();
+      ctx.ellipse(0, 18, this.w * 0.75, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,.08)';
+      ctx.stroke();
+
+      // cup body
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = 'rgba(0,0,0,.12)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(-this.w/2, -this.h/2, this.w, this.h, 10);
+      ctx.fill();
+      ctx.stroke();
+
+      // tea
+      ctx.fillStyle = '#c08457';
+      ctx.beginPath();
+      ctx.roundRect(-this.w/2+6, -this.h/2+6, this.w-12, 10, 6);
+      ctx.fill();
+
+      // handle
+      ctx.beginPath();
+      ctx.strokeStyle = '#ffd3e3';
+      ctx.lineWidth = 4;
+      const hr = 12;
+      ctx.arc(this.w/2 - 12, 0, hr, -Math.PI/2, Math.PI/2);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+  };
+
+  function resize() {
+    W = canvas.clientWidth * dpr;
+    H = (window.innerHeight - 140) * dpr; // account for header+controls
+    H = Math.max(300 * dpr, H);
+    canvas.width = W;
+    canvas.height = H;
+    cup.y = H - 70;
+    cup.x = W / 2;
+    cup.w = Math.max(64, Math.min(120, W / 8));
+    cup.h = cup.w * 0.5;
+  }
+
+  function spawnHeart() {
+    const size = 16 + Math.random() * 18;
+    const x = (size + Math.random() * (W - size*2));
+    const vy = (1.5 + Math.random() * 2.2) * (1 + Math.min(1.6, (60 - timeLeft)/40));
+    const spin = (Math.random() - 0.5) * 0.04;
+    hearts.push({
+      x, y: -30, vy, size, spin, rot: Math.random() * Math.PI * 2,
+      caught: false,
+      type: Math.random() < 0.12 ? 'gold' : 'pink', // rare golden heart
+    });
+  }
+
+  function drawHeart(x, y, size, rot, type) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(rot);
+    const s = size;
+    ctx.beginPath();
+    const k = 0.4;
+    ctx.moveTo(0, -s * 0.1);
+    ctx.bezierCurveTo(s * k, -s,  s * 1.4, -s * 0.2,  0, s);
+    ctx.bezierCurveTo(-s * 1.4, -s * 0.2, -s * k, -s, 0, -s * 0.1);
+    ctx.closePath();
+    ctx.fillStyle = type === 'gold' ? '#ffd166' : '#ff6b9e';
+    ctx.shadowColor = 'rgba(0,0,0,.12)';
+    ctx.shadowBlur = 10;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  function spawnParticles(x, y, color) {
+    for (let i = 0; i < 12; i++) {
+      particles.push({
+        x, y,
+        vx: (Math.random() - 0.5) * 3,
+        vy: (Math.random() - 1.2) * 3,
+        life: 1,
+        color
+      });
+    }
+  }
+
+  function drawParticles(dt) {
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      p.x += p.vx * dpr;
+      p.vy += 0.04 * dpr;
+      p.y += p.vy * dpr;
+      p.life -= dt * 1.8;
+      if (p.life <= 0) { particles.splice(i, 1); continue; }
+      ctx.globalAlpha = Math.max(0, p.life);
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 2.2 * dpr, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function rectsIntersect(ax, ay, aw, ah, bx, by, bw, bh) {
+    return Math.abs(ax - bx) * 2 < (aw + bw) && Math.abs(ay - by) * 2 < (ah + bh);
+  }
+
+  function update(dt) {
+    if (!playing || paused) return;
+    elapsed += dt;
+    timeLeft = Math.max(0, 60 - Math.floor(elapsed));
+    hud.time.textContent = timeLeft;
+    hud.score.textContent = score;
+    hud.combo.textContent = combo;
+    hud.lives.textContent = lives;
+
+    // Spawn rate scales with time
+    const spawnRate = Math.max(200, 900 - elapsed * 30);
+    if (Math.random() * spawnRate < 8) spawnHeart();
+
+    // Move cup
+    cup.x += cup.vx * dt * 520 * dpr;
+    cup.x = Math.max(cup.w/2 + 6, Math.min(W - cup.w/2 - 6, cup.x));
+
+    // Clear
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, H);
+
+    // Draw subtle grid / vignette
+    const grad = ctx.createLinearGradient(0,0,0,H);
+    grad.addColorStop(0,'#fff');
+    grad.addColorStop(1,'#fff7fb');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0,0,W,H);
+
+    // Hearts
+    for (let i = hearts.length - 1; i >= 0; i--) {
+      const h = hearts[i];
+      h.y += h.vy * dpr;
+      h.rot += h.spin;
+      drawHeart(h.x, h.y, h.size * dpr, h.rot, h.type);
+
+      if (!h.caught && rectsIntersect(h.x, h.y, h.size*2, h.size*2, cup.x, cup.y-6, cup.w, cup.h)) {
+        h.caught = true;
+        const add = h.type === 'gold' ? 10 : 3;
+        const bonus = Math.min(30, Math.floor(combo / 5));
+        score += add + bonus;
+        combo += 1;
+        spawnParticles(cup.x, cup.y - 10, h.type === 'gold' ? '#ffd166' : '#ff6b9e');
+        hearts.splice(i,1);
+        continue;
+      }
+
+      if (h.y > H + 40) {
+        hearts.splice(i, 1);
+        combo = 0;
+        lives -= 1;
+      }
+    }
+
+    // Particles
+    drawParticles(dt);
+
+    // Cup
+    cup.draw();
+
+    if (lives <= 0 || timeLeft <= 0) {
+      endGame();
+    }
+  }
+
+  function startGame(restart=false) {
+    playing = true;
+    paused = false;
+    elapsed = 0;
+    timeLeft = 60;
+    score = 0;
+    combo = 0;
+    lives = 3;
+    hearts.length = 0;
+    particles.length = 0;
+    lastTime = performance.now();
+    modal.style.display = 'none';
+    if (restart) { /* keep best */ }
+    loop();
+  }
+
+  function endGame() {
+    playing = false;
+    paused = false;
+    const newBest = {
+      score: Math.max(best.score, score),
+      combo: Math.max(best.combo, combo),
+    };
+    best = newBest;
+    localStorage.setItem('teaHeartsBest', JSON.stringify(best));
+    bestScoreEl.textContent = best.score;
+    bestComboEl.textContent = best.combo;
+
+    modalTitle.textContent = 'Result';
+    modalText.innerHTML = `得点 <b>${score}</b>　/　最大コンボ <b>${combo}</b><br>Arthur「よくやった、愛。まだいけるな？」`;
+    modal.style.display = 'flex';
+  }
+
+  function togglePause() {
+    if (!playing) return;
+    paused = !paused;
+    if (!paused) {
+      lastTime = performance.now();
+      loop();
+    } else {
+      modalTitle.textContent = 'Tea Break';
+      modalText.textContent = '休憩中……紅茶のおかわりはどうする？';
+      modal.style.display = 'flex';
+    }
+  }
+
+  function loop(now) {
+    if (!playing) return;
+    const t = now || performance.now();
+    const dt = Math.min(0.033, (t - lastTime) / 1000) || 0.016;
+    lastTime = t;
+    update(dt);
+    if (playing && !paused) requestAnimationFrame(loop);
+  }
+
+  // Input
+  const keys = {};
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowLeft') { keys.left = true; cup.vx = -1; }
+    if (e.key === 'ArrowRight'){ keys.right = true; cup.vx =  1; }
+    if (e.key.toLowerCase() === 'p') togglePause();
+  });
+  window.addEventListener('keyup', (e) => {
+    if (e.key === 'ArrowLeft') { keys.left = false; if (!keys.right) cup.vx = 0; else cup.vx = 1; }
+    if (e.key === 'ArrowRight'){ keys.right= false; if (!keys.left)  cup.vx = 0; else cup.vx = -1; }
+  });
+
+  // Touch / pointer drag on cup
+  let dragging = false;
+  canvas.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * dpr;
+    cup.x = x;
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = (e.clientX - rect.left) * dpr;
+    cup.x = x;
+  });
+  window.addEventListener('pointerup', () => { dragging = false; });
+
+  // Buttons
+  let holdLeft = false, holdRight = false, holdInterval = null;
+  function updateVX(){
+    cup.vx = holdLeft && !holdRight ? -1 : holdRight && !holdLeft ? 1 : 0;
+  }
+  function hold(dir, on){
+    if (dir==='L') holdLeft = on;
+    if (dir==='R') holdRight = on;
+    updateVX();
+  }
+  btnLeft.addEventListener('pointerdown', ()=>hold('L',true));
+  btnLeft.addEventListener('pointerup',   ()=>hold('L',false));
+  btnLeft.addEventListener('pointerleave',()=>hold('L',false));
+  btnRight.addEventListener('pointerdown',()=>hold('R',true));
+  btnRight.addEventListener('pointerup',  ()=>hold('R',false));
+  btnRight.addEventListener('pointerleave',()=>hold('R',false));
+  btnPause.addEventListener('click', togglePause);
+  btnStart.addEventListener('click', ()=> startGame(true));
+  btnRestart.addEventListener('click', ()=> startGame(true));
+
+  // Modal click to resume if paused
+  modal.addEventListener('click', (e)=>{
+    if (e.target === modal && paused) { modal.style.display = 'none'; togglePause(); }
+  });
+
+  // Resize
+  window.addEventListener('resize', resize, { passive: true });
+  resize();
+
+  // Show intro modal
+  modalTitle.textContent = 'Arthurからの挑戦状';
+  modalText.innerHTML = '落ちてくるハートをカップで受け止めよう。<br>金色は高得点、連続で取るとコンボ加点！<br>制限時間は60秒、3回落とすと終了。';
+  modal.style.display = 'flex';
+})();
+</script>
+</body>
+</html>
