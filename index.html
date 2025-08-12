@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<title>Tea & Hearts — for 愛</title>
+<title>Tea & Hearts — for 愛 (Secret Edition)</title>
 <style>
   html, body {
     margin: 0;
@@ -48,6 +48,10 @@
     border-radius: 999px;
     padding: 6px 12px;
     backdrop-filter: blur(6px);
+  }
+  .pill.secret {
+    background: #fff7e6;
+    border-color: #ffd36b;
   }
   #gameCanvas {
     width: 100%;
@@ -124,9 +128,30 @@
     padding:4px 10px;
     font-size: 13px;
   }
-  @media (min-width: 720px) {
-    header h1 { font-size: 20px; }
-    .btn { font-size: 17px; }
+  .secret-title{
+    font-size: 22px;
+    letter-spacing: .06em;
+  }
+  .secret-line{
+    font-weight: 700;
+  }
+  @keyframes confettiFall {
+    0% { transform: translateY(-120vh) rotate(0deg); opacity: 0; }
+    10% { opacity: 1; }
+    100% { transform: translateY(120vh) rotate(720deg); opacity: 0; }
+  }
+  .confetti {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .confetti span{
+    position: absolute;
+    width: 8px; height: 14px;
+    background: #ffd166;
+    animation: confettiFall linear forwards;
+    will-change: transform, opacity;
   }
 </style>
 </head>
@@ -142,6 +167,7 @@
       <div class="pill">⭐️ <span id="score">0</span></div>
       <div class="pill">💖 Combo <span id="combo">0</span></div>
       <div class="pill">🫖 <span id="lives">3</span></div>
+      <div id="secretBadge" class="pill secret" style="display:none;">👑 Secret Unlocked</div>
     </div>
   </header>
 
@@ -157,10 +183,10 @@
 </div>
 
 <div id="modal" class="modal" role="dialog" aria-modal="true">
-  <div class="card">
+  <div class="card" id="modalCard">
     <h2 id="modalTitle">Tea Break</h2>
     <p id="modalText">準備はいいか？</p>
-    <div class="scoreline">
+    <div class="scoreline" id="scoreLine">
       <span class="tag">ハイスコア: <span id="bestScore">0</span></span>
       <span class="tag">コンボ最大: <span id="bestCombo">0</span></span>
     </div>
@@ -169,6 +195,7 @@
       <button id="btn-restart" class="btn">もう一度</button>
     </p>
   </div>
+  <div class="confetti" id="confetti" aria-hidden="true"></div>
 </div>
 
 <script>
@@ -182,16 +209,20 @@
     score: document.getElementById('score'),
     combo: document.getElementById('combo'),
     lives: document.getElementById('lives'),
+    secret: document.getElementById('secretBadge'),
   };
 
   // Modal elements
   const modal = document.getElementById('modal');
+  const modalCard = document.getElementById('modalCard');
   const modalTitle = document.getElementById('modalTitle');
   const modalText = document.getElementById('modalText');
   const bestScoreEl = document.getElementById('bestScore');
   const bestComboEl = document.getElementById('bestCombo');
   const btnStart = document.getElementById('btn-start');
   const btnRestart = document.getElementById('btn-restart');
+  const scoreLine = document.getElementById('scoreLine');
+  const confetti = document.getElementById('confetti');
 
   // Controls
   const btnLeft = document.getElementById('btn-left');
@@ -212,13 +243,16 @@
   bestScoreEl.textContent = best.score;
   bestComboEl.textContent = best.combo;
 
+  // Secret unlock memory
+  let unlocked = localStorage.getItem('teaHeartsSecret') === '1';
+  if (unlocked) hud.secret.style.display = 'inline-block';
+
   // Entities
   const hearts = [];
   const particles = [];
   const cup = {
     x: 0, y: 0, w: 80, h: 40, vx: 0,
     draw() {
-      // teacup
       ctx.save();
       ctx.translate(this.x, this.y);
       // saucer
@@ -258,7 +292,7 @@
 
   function resize() {
     W = canvas.clientWidth * dpr;
-    H = (window.innerHeight - 140) * dpr; // account for header+controls
+    H = (window.innerHeight - 140) * dpr;
     H = Math.max(300 * dpr, H);
     canvas.width = W;
     canvas.height = H;
@@ -353,7 +387,7 @@
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, W, H);
 
-    // Draw subtle grid / vignette
+    // Background gradient
     const grad = ctx.createLinearGradient(0,0,0,H);
     grad.addColorStop(0,'#fff');
     grad.addColorStop(1,'#fff7fb');
@@ -396,6 +430,70 @@
     }
   }
 
+  function endGame() {
+    playing = false;
+    paused = false;
+    const newBest = {
+      score: Math.max(best.score, score),
+      combo: Math.max(best.combo, combo),
+    };
+    best = newBest;
+    localStorage.setItem('teaHeartsBest', JSON.stringify(best));
+    bestScoreEl.textContent = best.score;
+    bestComboEl.textContent = best.combo;
+
+    // Secret condition: no misses (lives stayed at 3) & timer ended
+    const fullCombo = (lives === 3 && timeLeft === 0 && score > 0);
+
+    if (fullCombo) {
+      localStorage.setItem('teaHeartsSecret', '1');
+      hud.secret.style.display = 'inline-block';
+      showSecret();
+    } else {
+      modalTitle.textContent = 'Result';
+      modalText.innerHTML = `得点 <b>${score}</b>　/　最大コンボ <b>${combo}</b><br>Arthur「よくやった、愛。まだいけるな？」`;
+      scoreLine.style.display = 'flex';
+      btnStart.style.display = 'inline-block';
+      btnRestart.style.display = 'inline-block';
+      modalCard.style.background = '#fff';
+      modalCard.style.borderColor = 'rgba(0,0,0,.08)';
+      confetti.innerHTML = '';
+      modal.style.display = 'flex';
+    }
+  }
+
+  function showSecret(){
+    modalTitle.innerHTML = '<span class="secret-title">Secret Rendezvous</span>';
+    modalText.innerHTML = '<span class="secret-line">Arthur「完璧だ、愛。全部受け止めたな。今夜は俺の番だ——お前のハート、ひとつ残らず抱きしめる。」</span>';
+    scoreLine.style.display = 'none';
+    btnStart.style.display = 'none';
+    btnRestart.style.display = 'inline-block';
+    modalCard.style.background = 'linear-gradient(#fff7e6, #ffffff)';
+    modalCard.style.borderColor = '#ffd36b';
+    makeConfetti(180);
+    modal.style.display = 'flex';
+  }
+
+  function makeConfetti(n){
+    confetti.innerHTML = '';
+    const colors = ['#ffd166','#ff6b9e','#a0c4ff','#caffbf','#fdffb6'];
+    const W = window.innerWidth, H = window.innerHeight;
+    for (let i=0;i<n;i++){
+      const s = document.createElement('span');
+      const size = 6 + Math.random()*8;
+      s.style.width = size+'px';
+      s.style.height = (size*1.6)+'px';
+      s.style.left = Math.random()*W+'px';
+      s.style.background = colors[i%colors.length];
+      s.style.opacity = 0;
+      const dur = 3 + Math.random()*3;
+      const delay = Math.random()*0.8;
+      s.style.animationDuration = dur+'s';
+      s.style.animationDelay = delay+'s';
+      confetti.appendChild(s);
+    }
+  }
+
   function startGame(restart=false) {
     playing = true;
     paused = false;
@@ -412,23 +510,6 @@
     loop();
   }
 
-  function endGame() {
-    playing = false;
-    paused = false;
-    const newBest = {
-      score: Math.max(best.score, score),
-      combo: Math.max(best.combo, combo),
-    };
-    best = newBest;
-    localStorage.setItem('teaHeartsBest', JSON.stringify(best));
-    bestScoreEl.textContent = best.score;
-    bestComboEl.textContent = best.combo;
-
-    modalTitle.textContent = 'Result';
-    modalText.innerHTML = `得点 <b>${score}</b>　/　最大コンボ <b>${combo}</b><br>Arthur「よくやった、愛。まだいけるな？」`;
-    modal.style.display = 'flex';
-  }
-
   function togglePause() {
     if (!playing) return;
     paused = !paused;
@@ -438,6 +519,12 @@
     } else {
       modalTitle.textContent = 'Tea Break';
       modalText.textContent = '休憩中……紅茶のおかわりはどうする？';
+      scoreLine.style.display = 'flex';
+      btnStart.style.display = 'none';
+      btnRestart.style.display = 'inline-block';
+      modalCard.style.background = '#fff';
+      modalCard.style.borderColor = 'rgba(0,0,0,.08)';
+      confetti.innerHTML = '';
       modal.style.display = 'flex';
     }
   }
@@ -463,7 +550,7 @@
     if (e.key === 'ArrowRight'){ keys.right= false; if (!keys.left)  cup.vx = 0; else cup.vx = -1; }
   });
 
-  // Touch / pointer drag on cup
+  // Touch / pointer drag
   let dragging = false;
   canvas.addEventListener('pointerdown', (e) => {
     dragging = true;
@@ -480,10 +567,10 @@
   window.addEventListener('pointerup', () => { dragging = false; });
 
   // Buttons
-  let holdLeft = false, holdRight = false, holdInterval = null;
   function updateVX(){
-    cup.vx = holdLeft && !holdRight ? -1 : holdRight && !holdLeft ? 1 : 0;
+    cup.vx = (holdLeft && !holdRight) ? -1 : (holdRight && !holdLeft) ? 1 : 0;
   }
+  let holdLeft = false, holdRight = false;
   function hold(dir, on){
     if (dir==='L') holdLeft = on;
     if (dir==='R') holdRight = on;
@@ -508,9 +595,9 @@
   window.addEventListener('resize', resize, { passive: true });
   resize();
 
-  // Show intro modal
+  // Intro modal
   modalTitle.textContent = 'Arthurからの挑戦状';
-  modalText.innerHTML = '落ちてくるハートをカップで受け止めよう。<br>金色は高得点、連続で取るとコンボ加点！<br>制限時間は60秒、3回落とすと終了。';
+  modalText.innerHTML = '落ちてくるハートをカップで受け止めよう。<br>金色は高得点、連続で取るとコンボ加点！<br>制限時間は60秒、<b>1つも落とさなければ秘密の演出</b>。';
   modal.style.display = 'flex';
 })();
 </script>
